@@ -1,7 +1,8 @@
 #include	"ping.h"
+#include	"a4.h"
 
 void
-send_v4(void)
+send_v4(int sockfd, struct proto *pr)
 {
 	int			len;
 	struct icmp	*icmp;
@@ -10,7 +11,7 @@ send_v4(void)
 	icmp->icmp_type = ICMP_ECHO;
 	icmp->icmp_code = 0;
 	icmp->icmp_id = pid;
-	icmp->icmp_seq = nsent++;
+	icmp->icmp_seq = pr->nsent++;
 	memset(icmp->icmp_data, 0xa5, datalen);	/* fill with pattern */
 	Gettimeofday((struct timeval *) icmp->icmp_data, NULL);
 
@@ -18,5 +19,7 @@ send_v4(void)
 	icmp->icmp_cksum = 0;
 	icmp->icmp_cksum = in_cksum((u_short *) icmp, len);
 
-	Sendto(sockfd, sendbuf, len, 0, pr->sasend, pr->salen);
+	int n = sendto(sockfd, sendbuf, len, 0, (SA *)pr->sasend, pr->salen);
+	//if( n > 0)	printf("Thread%d: %u\tPing sent to: %d\n", pr->i, (unsigned int) pthread_self(), pr->nsent);
+
 }
