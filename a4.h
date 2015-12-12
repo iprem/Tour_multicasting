@@ -14,6 +14,7 @@
 #define MCAST_PORT	2038
 #define TRUE 1
 #define FALSE 0
+#define TIMEOUT 5	
 
 struct hwaddr {
  int sll_ifindex; 				/* Interface number */
@@ -33,6 +34,6 @@ typedef struct areq_struct areq_struct;
 void findHostName(char *ip, char *host);
 void findOwnIP(char *own_ip);
 
-int areq(struct sockaddr *IPaddr, socklen_t sockaddrlen, struct hwaddr *Hwaddr);
+int areq(struct in_addr *IPaddr, socklen_t sockaddrlen, struct hwaddr *Hwaddr);
 
 #endif
