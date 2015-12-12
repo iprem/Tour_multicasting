@@ -4,7 +4,7 @@ LIBS = -lunp -lpthread -lrt
 CLEANFILES = tour *~ *.o ud_*
 
 
-all: tour
+all: tour arp
 
 tour : tour.c get_hw_addrs.c a4_utils.c proc_v4.c readloop.c send_v4.c areq.c sockaddr_util.c
 	$(CC) $(CFLAGS) tour tour.c get_hw_addrs.c a4_utils.c proc_v4.c readloop.c send_v4.c areq.c sockaddr_util.c $(LIBS)
