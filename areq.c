@@ -1,5 +1,3 @@
-	
-
 #include "unp.h"
 #include "a4.h"
 #include "sockaddr_util.h"
@@ -17,7 +15,7 @@ areq (struct sockaddr *IPaddr, socklen_t sockaddrlen, struct hwaddr *HWaddr){
 	init_sockaddr_un(&addr, SUN_PATH);
 
 	Bind(sockfd, (SA *)&addr, sizeof(addr));
-
+	
 	
 
 }

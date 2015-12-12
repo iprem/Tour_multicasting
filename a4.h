@@ -12,6 +12,8 @@
 #define IDENTIFICATION 0x9D
 #define MCAST_IP	"224.0.0.18"
 #define MCAST_PORT	2038
+#define TRUE 1
+#define FALSE 0
 
 struct hwaddr {
  int sll_ifindex; 				/* Interface number */
@@ -19,6 +21,14 @@ struct hwaddr {
  unsigned char sll_halen; 		/* Length of address */
  unsigned char sll_addr[8]; 	/* Physical layer address */
 };
+
+struct areq_struct{
+  struct hwaddr dest_hw;
+  struct in_addr dest_ip;
+
+};
+
+typedef struct areq_struct areq_struct;
 
 void findHostName(char *ip, char *host);
 void findOwnIP(char *own_ip);
