@@ -29,7 +29,6 @@ typedef struct arp_record arp_record;
 struct arp{
 
 	struct ethhdr hdr;
-	unsigned char arp_prot[2];
 	unsigned char hard_type[2];
 	unsigned short prot_type;
 	unsigned char hard_size;
@@ -56,6 +55,9 @@ void arp_send_request(int fd, areq_struct* areq);
 static inline void arp_get_request(int fd, arp* recv, struct sockaddr_ll* sockaddr_request);
 int arp_target(arp* incoming, struct in_addr* own_ip_network);
 void arp_send_reply(int fd, arp* request, struct sockaddr_ll* sockaddr_request );
+void print_eth_addr(unsigned char *addr);
+void print_eth_hdr(struct ethhdr *hdr);
+void print_arp(arp * to_print);
 
 int main(int argc, char **argv){
 	struct sockaddr_un sock_domain_arp;
@@ -168,6 +170,10 @@ arp_send_reply(int fd, arp* request, struct sockaddr_ll* sockaddr_request ){
 	memcpy(reply.dest_eth_addr, request->send_eth_addr, ETH_ALEN);
 	memcpy(&reply.dest_ip, &request->dest_ip, ETH_ALEN);
 
+	printf("Arp reply sent! \n");
+	print_eth_hdr(&reply.hdr);
+	print_arp(&reply);
+
 	Sendto(fd, &request, sizeof(request), 0, (SA *) &sockaddr_reply, sizeof(struct sockaddr_ll));
 
 }
@@ -197,7 +203,13 @@ arp_send_request(int fd, areq_struct* areq){
 	memcpy(request.send_eth_addr, request.hdr.h_source, 6);
 	findOwnIP(own_ip);
 	inet_pton(AF_INET, own_ip, &request.send_ip);
+
+	memcpy(&request.dest_eth_addr, dest_mac, ETH_ALEN);
 	request.op = ARP_REQUEST;
+
+	printf("Arp request sent! \n");
+	print_eth_hdr(&request.hdr);
+	print_arp(&request);
 
 	Sendto(fd, &request, sizeof(request), 0, (SA *) &sockaddr_request, sizeof(struct sockaddr_ll));
 	
@@ -333,5 +345,58 @@ areq_reply(int fd, areq_struct * areq, arp_record * cache){
 	Write(fd, &areq_reply, sizeof(areq_struct));
 }
 
+void
+print_eth_hdr(struct ethhdr *hdr){
+	printf("Source ethernet addr: ");
+	print_eth_addr(hdr->h_source);
+	
+	printf("Dest ethernet addr: ");
+	print_eth_addr(hdr->h_dest);
+	
+	printf("Eth frame proto number: ");
+	printf("%d", ntohs(hdr->h_proto));
+	printf("\n");
+	
+}
+
+void print_arp(arp * to_print){
+	char ip[16];
+
+	memset(ip, 0, 16);
+
+	printf("Arp prot number: ");
+	printf("%d", ntohs(to_print->prot_type));
+	printf("\n");
+	
+	printf("Source ethernet addr:");
+	print_eth_addr(to_print->send_eth_addr);
+	       
+	inet_ntop(AF_INET, &to_print->send_ip, ip, 16);
+	printf("Source ip addr: %s \n", ip);
+
+	printf("Dest ethernet addr:");
+	print_eth_addr(to_print->dest_eth_addr);
+
+	memset(ip, 0, 16);
+	inet_ntop(AF_INET, &to_print->dest_ip, ip, 16);
+	printf("Dest ip addr: %s \n", ip);
+
+	
+		
+    
+}
+
+void
+print_eth_addr(unsigned char *addr)
+{
+  int i;
+  for(i = 0; i < 6; i++)
+    {
+      printf("%.2x%s", *addr++ & 0xff, (i == 5) ? " " : ":");
+    }
+  
+  printf("\n");
+
+}
 
 
