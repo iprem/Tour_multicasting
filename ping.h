@@ -16,12 +16,12 @@ pid_t	 pid;				/* our PID */
 int		 sockfd, pg;
 
 struct proto {
-  struct sockaddr  *sasend;	/* sockaddr{} for send, from getaddrinfo */
-  struct sockaddr  *sarecv;	/* sockaddr{} for receiving */
+  struct in_addr  sasend;	/* sockaddr{} for send, from getaddrinfo */
+  struct in_addr  sarecv;	/* sockaddr{} for receiving */
   socklen_t	    salen;		/* length of sockaddr{}s */
   int	   	    icmpproto;	/* IPPROTO_xxx value for ICMP */
-  char 		host[20];
-  int		 nsent;			/* add 1 for each sendto() */
+  char 			host[20];
+  int		 	nsent;			/* add 1 for each sendto() */
   int			i;
 };
 
@@ -31,4 +31,5 @@ void	 send_v4(int, struct proto *);
 void	 readloop(struct proto *);
 void	 sig_alrm(int);
 void	 tv_sub(struct timeval *, struct timeval *);
+uint16_t checksum (uint16_t *addr, int len);
 
