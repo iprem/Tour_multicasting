@@ -66,7 +66,6 @@ int main(int argc, char **argv){
 	fd_set rset;
 	int max_fd = 0;
 	int packet_fd = 0, domain_fd = 0;
-	char *domain_path = "arp_path";
 	arp_record arp_cache[CACHE_SIZE];
 	char own_ip[16];
 
@@ -84,7 +83,7 @@ int main(int argc, char **argv){
 
         /*Create domain socket */
 	domain_fd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
-	init_sockaddr_un(&sock_domain_arp, domain_path);
+	init_sockaddr_un(&sock_domain_arp, SUN_PATH);
 	Bind(domain_fd, (SA *) &sock_domain_arp, SUN_LEN(&sock_domain_arp));
 
 	while(1){
