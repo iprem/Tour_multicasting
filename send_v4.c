@@ -3,6 +3,8 @@
 #include	<net/if.h>
 #include 	"unp.h"
 
+static void print_eth_addr(unsigned char *addr);
+
 void
 send_v4(int sockfd, struct proto *pr)
 {
@@ -48,7 +50,7 @@ send_v4(int sockfd, struct proto *pr)
 	Hwaddr.sll_hatype = device.sll_hatype;
 	Hwaddr.sll_halen = device.sll_halen;
 
-	n = areq(&pr->sarecv, sizeof(SA), &Hwaddr);
+	n = areq(&pr->sasend, sizeof(SA), &Hwaddr);
 
 	if(n == -1){
 		printf("Failed to obtain HW address\n");
@@ -71,11 +73,7 @@ send_v4(int sockfd, struct proto *pr)
 	memcpy(dst_mac, Hwaddr.sll_addr, 6);
 	
 	printf("HW address obtained: ");
-	for (i=0; i<5; i++) {
-    	printf ("%02x:", Hwaddr.sll_addr[i]);
-  	}
-  	printf ("%02x\n", Hwaddr.sll_addr[5]);
-	
+	print_eth_addr(Hwaddr.sll_addr);
 
 	iphdr.ip_hl = IP4_HDRLEN / sizeof (uint32_t);
 	iphdr.ip_v = 4;
@@ -126,5 +124,18 @@ send_v4(int sockfd, struct proto *pr)
 	free (src_mac);
 	free (dst_mac);
 	free (ether_frame);
+
+}
+
+static void
+print_eth_addr(unsigned char *addr)
+{
+  int i;
+  for(i = 0; i < 6; i++)
+    {
+      printf("%.2x%s", *addr++ & 0xff, (i == 5) ? " " : ":");
+    }
+  
+  printf("\n");
 
 }

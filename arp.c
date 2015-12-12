@@ -44,9 +44,9 @@ struct arp{
 typedef struct arp arp;
 
 void cache_init(arp_record * cache);
-static inline void areq_get_args(int fd, areq_struct * areq);
+static inline void areq_get_args(int fd, struct sockaddr_un* client,  areq_struct * areq);
 int cache_have_hw(arp_record* cache, areq_struct * areq);
-void areq_reply(int fd, areq_struct * areq, arp_record * cache);
+void areq_reply(int fd, struct sockaddr_un* client,  arp * arp_reply, arp_record * cache);
 void cache_insert_incomplete(int fd, arp_record * cache, areq_struct* areq);
 void cache_add(arp_record* cache, arp* arp_recv);
 void arp_send_request(int fd, areq_struct* areq);
@@ -58,9 +58,11 @@ void arp_send_reply(int fd, arp* request, struct sockaddr_ll* sockaddr_request )
 void print_eth_addr(unsigned char *addr);
 void print_eth_hdr(struct ethhdr *hdr);
 void print_arp(arp * to_print);
+void cache_get_info(arp * arp_reply, areq_struct * areq_reply, arp_record * cache );
 
 int main(int argc, char **argv){
 	struct sockaddr_un sock_domain_arp;
+	struct sockaddr_un sock_domain_client;
 	struct sockaddr_ll sock_packet_arp;
 	struct in_addr own_ip_network;
 	areq_struct areq_recv;
@@ -75,7 +77,11 @@ int main(int argc, char **argv){
 	memset(own_ip, 0 , 16);
 	memset(&areq_recv, 0, sizeof(areq_struct));
 	memset(&arp_recv, 0, sizeof(arp));
+	memset(&sock_domain_client, 0, sizeof(struct sockaddr_un));
+	sock_domain_client.sun_family = AF_LOCAL;
 	cache_init(arp_cache);
+
+	unlink(SUN_PATH2);
 
 	findOwnIP(own_ip);
 	inet_pton(AF_INET, own_ip, &own_ip_network);
@@ -85,7 +91,7 @@ int main(int argc, char **argv){
 
         /*Create domain socket */
 	domain_fd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
-	init_sockaddr_un(&sock_domain_arp, SUN_PATH);
+	init_sockaddr_un(&sock_domain_arp, SUN_PATH2);
 	Bind(domain_fd, (SA *) &sock_domain_arp, SUN_LEN(&sock_domain_arp));
 
 	while(1){
@@ -95,28 +101,38 @@ int main(int argc, char **argv){
 		      FD_SET(domain_fd, &rset);
 		      max_fd = packet_fd > domain_fd ? packet_fd : domain_fd;
 		      select(max_fd + 1, &rset, NULL, NULL, NULL);
-		      if(FD_ISSET(packet_fd, &rset)){
+		      if(FD_ISSET(packet_fd, &rset)){			
+			      printf("Received arp msg \n");
 			      memset(&areq_recv, 0 , sizeof(areq_struct));
 			      arp_get_request(packet_fd, &arp_recv, &sock_packet_arp);
+			      print_arp(&arp_recv);
 			      if(arp_target(&arp_recv, &own_ip_network)){
+				      printf("Arp target \n");
 				      if(arp_recv.op == ARP_REPLY){
 					      //Write to domain
 					      cache_add(arp_cache, &arp_recv);					     
-					      areq_reply(domain_fd, &areq_recv, arp_cache);
+					      areq_reply(domain_fd, &sock_domain_client, &arp_recv, arp_cache);
 				      }
 
 				      else if(arp_recv.op == ARP_REQUEST){
+					      printf("Arp request \n");
 					      arp_send_reply(packet_fd, &arp_recv, &sock_packet_arp);
 				      }
 			      }
 		      }
 		      if(FD_ISSET(domain_fd, &rset)){
-			      areq_get_args(domain_fd, &areq_recv);
+			      printf("Got data from tour \n");
+			      areq_get_args(domain_fd, &sock_domain_client,  &areq_recv);
+			      printf("Dest_IP After get_args: %s", inet_ntoa(areq_recv.dest_ip));
 			      if(cache_have_hw(arp_cache, &areq_recv)){
-				      areq_reply(domain_fd, &areq_recv,  arp_cache);
+				      printf("Have address in cache \n");
+				      memset(&arp_recv, 0, sizeof(arp));
+				      memcpy(&arp_recv.send_ip, &areq_recv.dest_ip, sizeof(struct in_addr));
+				      areq_reply(domain_fd, &sock_domain_client, &arp_recv, arp_cache);
 			      }
 			      else
 			      {
+				      printf("Do not Have address in cache \n");
 				      cache_insert_incomplete(domain_fd, arp_cache, &areq_recv);
 				      arp_send_request(packet_fd, &areq_recv);
 			      }
@@ -168,13 +184,13 @@ arp_send_reply(int fd, arp* request, struct sockaddr_ll* sockaddr_request ){
 
 	/* Make source addr the new target addr */
 	memcpy(reply.dest_eth_addr, request->send_eth_addr, ETH_ALEN);
-	memcpy(&reply.dest_ip, &request->dest_ip, ETH_ALEN);
+	memcpy(&reply.dest_ip, &request->send_ip, ETH_ALEN);
 
 	printf("Arp reply sent! \n");
 	print_eth_hdr(&reply.hdr);
 	print_arp(&reply);
 
-	Sendto(fd, &request, sizeof(request), 0, (SA *) &sockaddr_reply, sizeof(struct sockaddr_ll));
+	Sendto(fd, &reply, sizeof(reply), 0, (SA *) &sockaddr_reply, sizeof(struct sockaddr_ll));
 
 }
 
@@ -205,6 +221,7 @@ arp_send_request(int fd, areq_struct* areq){
 	inet_pton(AF_INET, own_ip, &request.send_ip);
 
 	memcpy(&request.dest_eth_addr, dest_mac, ETH_ALEN);
+	memcpy(&request.dest_ip, &areq->dest_ip, ETH_ALEN);
 	request.op = ARP_REQUEST;
 
 	printf("Arp request sent! \n");
@@ -217,8 +234,9 @@ arp_send_request(int fd, areq_struct* areq){
 
 static inline void
 arp_get_request(int fd, arp* recv, struct sockaddr_ll* sockaddr_request){
-	
-	Read(fd, recv, sizeof(arp));
+
+  socklen_t len = sizeof(struct sockaddr_ll);
+  Recvfrom(fd, recv, sizeof(arp), 0, (SA *) sockaddr_request, &len);
 
 }
 
@@ -261,6 +279,8 @@ cache_add(arp_record* cache, arp* arp_recv){
 		if(!memcmp(&cache->ip, &arp_recv->send_ip, sizeof(struct in_addr))){
 			if(cache->valid == 0){
 				memcpy(cache->sll_addr, arp_recv->send_eth_addr, ETH_ALEN);
+				printf("Cache add: ");
+				print_eth_addr(cache->sll_addr);
 				cache->valid = 1;
 				break;
 			}
@@ -293,12 +313,12 @@ Get eth addr, index and IP addr from cache. Set addr len to eth addr len.
 */
 
 void
-cache_get_info(areq_struct * areq, areq_struct * areq_reply, arp_record * cache ){
+cache_get_info(arp * arp_reply, areq_struct * areq_reply, arp_record * cache ){
 	int i;
 
 	for(i = 0; i < CACHE_SIZE; i++){
-		if(!memcmp(&areq->dest_ip, &cache->ip, sizeof(struct in_addr))){
-			memcpy(areq_reply->dest_hw.sll_addr, cache->sll_addr, 8);
+		if(!memcmp(&arp_reply->send_ip, &cache->ip, sizeof(struct in_addr))){
+			memcpy(areq_reply->dest_hw.sll_addr, cache->sll_addr, ETH_ALEN);
 			areq_reply->dest_hw.sll_ifindex = cache->sll_ifindex; 
 			areq_reply->dest_hw.sll_halen = 6;
 			memcpy(&areq_reply->dest_ip, &cache->ip, sizeof(struct in_addr));
@@ -328,21 +348,27 @@ cache_have_hw(arp_record* cache, areq_struct * areq){
 
 
 static inline void
-areq_get_args(int fd, areq_struct * areq){
-	
-	Read(fd, areq, sizeof(areq_struct));
+areq_get_args(int fd, struct sockaddr_un* client,  areq_struct * areq){
 
+	socklen_t len =  sizeof(struct sockaddr_un);
+
+	Recvfrom(fd, areq, sizeof(areq_struct), 0, (SA *) client, &len);
+	printf("Length of client sockaddr_un: %d \n", len);
 }
 
 void
-areq_reply(int fd, areq_struct * areq, arp_record * cache){
+areq_reply(int fd, struct sockaddr_un* client,  arp * arp_reply, arp_record * cache){
+
 	areq_struct areq_reply;
-	
+
+	printf("Areq reply \n");
 	memset(&areq_reply, 0, sizeof(areq_struct));
 	
-	cache_get_info(areq, &areq_reply,  cache);
+	cache_get_info(arp_reply, &areq_reply,  cache);
+	print_eth_addr(areq_reply.dest_hw.sll_addr);
 	
-	Write(fd, &areq_reply, sizeof(areq_struct));
+	Sendto(fd, &areq_reply, sizeof(areq_struct), 0, (SA *) client, sizeof(struct sockaddr_un));
+	
 }
 
 void

@@ -6,7 +6,9 @@
 #include "hw_addrs.h"
 
 #define PROT_MAGIC 0x4d70
+#define CLIENT_ADDR	"/home/cse533-7/client_path"
 #define SUN_PATH	"/home/cse533-7/areq"
+#define SUN_PATH2	"/home/cse533-7/areq2"
 #define MAXIP 20
 #define PROTOCOL 0xAD
 #define IDENTIFICATION 0x9D

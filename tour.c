@@ -71,7 +71,6 @@ int main(int argc , char ** argv){
 	struct hostent *he;
 	struct in_addr **addr_list;
 
-
 	if(argc > MAXIP)
 		err_quit("Total number of nodes in the tour cannot exceed %d\n", MAXIP);
 	

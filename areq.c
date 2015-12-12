@@ -2,12 +2,16 @@
 #include "a4.h"
 #include "sockaddr_util.h"
 
+
+
 int 
 areq (struct in_addr *IPaddr, socklen_t sockaddrlen, struct hwaddr *HWaddr){
-
+  
+	socklen_t len = sizeof(struct sockaddr_un);
 	int sockfd;
 	const int one = 1;
 	struct sockaddr_un addr;
+	struct sockaddr_un myaddr;
 	areq_struct ar;
 	struct timeval timeout;
 	timeout.tv_sec = TIMEOUT;
@@ -16,9 +20,10 @@ areq (struct in_addr *IPaddr, socklen_t sockaddrlen, struct hwaddr *HWaddr){
 	sockfd = Socket(AF_LOCAL, SOCK_DGRAM, 0);
 	Setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
-	init_sockaddr_un(&addr, SUN_PATH);
-	
-	//Connect(sockfd, (SA *) &addr, sizeof(addr));
+	init_sockaddr_un(&addr, SUN_PATH2);
+	init_sockaddr_un(&myaddr, CLIENT_ADDR);
+	unlink(CLIENT_ADDR);
+	Bind(sockfd, (SA*) &myaddr, sizeof(myaddr));
 	
 	memset(&ar, 0, sizeof(struct areq_struct));
 
@@ -47,7 +52,8 @@ areq (struct in_addr *IPaddr, socklen_t sockaddrlen, struct hwaddr *HWaddr){
 	
 	Sendto(sockfd, &ar, sizeof(ar), 0, (SA *)&addr, sizeof(addr));
 
-	n = recvfrom(sockfd, &ar, sizeof(HWaddr), 0, (SA *)&addr, sizeof(addr) );
+	n = recvfrom(sockfd, &ar, sizeof(ar), 0, (SA *)&addr, &len);
+	memcpy(HWaddr->sll_addr, ar.dest_hw.sll_addr, ETH_ALEN);
 	if((n < 0) || (n == EWOULDBLOCK))
 		return -1;
 	
