@@ -6,13 +6,14 @@
 void
 send_v4(int sockfd, struct proto *pr)
 {
-	int			len, ip_flags[4], frame_length;
+	int			len, ip_flags[4], frame_length, n, i;
 	struct icmp	*icmp;
 	uint8_t *src_mac, *dst_mac, *ether_frame;
 	char interface[40];
 	struct ip iphdr;
 	struct ifreq ifr;
 	struct sockaddr_ll device;
+	struct hwaddr Hwaddr;
 	
 	strcpy (interface, "eth0");	
 	datalen = 56;
@@ -43,18 +44,38 @@ send_v4(int sockfd, struct proto *pr)
 	//printf ("Index for interface %s is %i\n", interface, device.sll_ifindex);
 	
 	/* Here API has to be used to obtain MAC address */
+	Hwaddr.sll_ifindex  = device.sll_ifindex;
+	Hwaddr.sll_hatype = device.sll_hatype;
+	Hwaddr.sll_halen = device.sll_halen;
+
+	n = areq(&pr->sarecv, sizeof(SA), &Hwaddr);
+
+	if(n == -1){
+		printf("Failed to obtain HW address\n");
+		return;
+	}
+	
 	//Obtain destination MAC Address vm1:00:0c:29:49:3f:5b
-	dst_mac[0] = 0x00;
+	/*dst_mac[0] = 0x00;
 	dst_mac[1] = 0x0c;
 	dst_mac[2] = 0x29;
 	dst_mac[3] = 0x49;
 	dst_mac[4] = 0x3f;
-	dst_mac[5] = 0x5b;
+	dst_mac[5] = 0x5b;*/
 
 	// Fill out sockaddr_ll.
 	device.sll_family = AF_PACKET;
 	memcpy (device.sll_addr, src_mac, 6);
 	device.sll_halen = 6;
+
+	memcpy(dst_mac, Hwaddr.sll_addr, 6);
+	
+	printf("HW address obtained: ");
+	for (i=0; i<5; i++) {
+    	printf ("%02x:", Hwaddr.sll_addr[i]);
+  	}
+  	printf ("%02x\n", Hwaddr.sll_addr[5]);
+	
 
 	iphdr.ip_hl = IP4_HDRLEN / sizeof (uint32_t);
 	iphdr.ip_v = 4;
