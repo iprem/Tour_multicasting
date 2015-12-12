@@ -48,7 +48,7 @@ send_v4(int sockfd, struct proto *pr)
 	Hwaddr.sll_hatype = device.sll_hatype;
 	Hwaddr.sll_halen = device.sll_halen;
 
-	n = areq(&pr->sarecv, sizeof(SA), &Hwaddr);
+	n = areq(&pr->sasend, sizeof(SA), &Hwaddr);
 
 	if(n == -1){
 		printf("Failed to obtain HW address\n");
