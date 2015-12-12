@@ -9,16 +9,7 @@
 #include "unpthread.h"
 #include <time.h>
 
-#define IP4_HDRLEN 20         // IPv4 header length
-#define MAXIP 20
-#define PROTOCOL 0xAD
-#define IDENTIFICATION 0x9D
-#define MCAST_IP	"224.0.0.18"
-#define MCAST_PORT	2038
 
-
-//struct proto proto_v4 =
-//		{ proc_v4, send_v4, NULL, NULL, NULL, 0, IPPROTO_ICMP, 0 };
 
 struct proto pr[10];
 
@@ -53,9 +44,7 @@ struct payload{
 	struct in_addr nodes[MAXIP];	//Nodes in the tour		
 	struct sockaddr_in mcastaddr;	//Multicast address
 
-};
-
-int     datalen = 56;
+}*p;
 
 void iphdr_init (struct ip *iphdr);					/* To initialize IP header */
 uint16_t checksum (uint16_t *addr, int len); 		/* Find checksum */
@@ -66,10 +55,15 @@ int add_node (struct threads *);
 void kill_threads (pthread_t *, int);
 void *test(void *arg);
 int check_existing_thread(char * );
+void sig_alrm(int signo);
+
+int datalen = 56, udp_send, i;
+char msg1[MAXLINE];
+pthread_t tid[10];
 
 int main(int argc , char ** argv){
 	
-	int rt, udp_send, udp_recv;			/* Sockets */
+	int rt, udp_recv;			/* Sockets */
 	struct payload *payload;
 	int i = 1, binded = 0;
 	char interface[4], own_ip[16], hostname[4];
@@ -149,7 +143,7 @@ int main(int argc , char ** argv){
 			addr_list = (struct in_addr **)he->h_addr_list;
 			payload->nodes[i] = *addr_list[0] ;
 
-			printf("Addr: %s\n",inet_ntoa(payload->nodes[i]));
+			//printf("Addr: %s\n",inet_ntoa(payload->nodes[i]));
 			
 			if((i+1) != argc)
 				if( !strcmp(argv[i],argv[i+1]) )
@@ -160,7 +154,7 @@ int main(int argc , char ** argv){
 		/* Pointer should point to next hop */
 		payload->proto_hdr.ptr = htons(0);
 		payload->proto_hdr.max = htons(i);
-		printf("Payload success\n");
+		//printf("Payload success\n");
 		
 		memset (&(payload->mcastaddr), 0, sizeof (struct sockaddr_in));
 		payload->mcastaddr.sin_family = AF_INET;
@@ -195,14 +189,13 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 	struct payload *payload;
 	struct ip *iphdr;
 	uint8_t *buff;	
-	int flag = 0, n = 5, i = 0, k = 0, flag2 = 0;
+	int flag = 0, k = 0, flag2 = 0, flag3 = 0, flag4 = 0;
 	time_t ticks;
 	ticks = time(NULL);
 	socklen_t addrlen;
 	struct sockaddr_in source;
 	char hostname[4], hostname_src[4], own_ip[16];
 	char msg[MAXLINE];
-	pthread_t tid[10];
 	struct threads *newnode;
 	int				size;
 	char			recvbuf[BUFSIZE];
@@ -212,27 +205,28 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 	ssize_t			num;
 	struct timeval	tval;
 	struct sockaddr *sarecv;
-	struct addrinfo ai[10], *a;
+	struct addrinfo *a;
 	//struct proto p[10];
+
+	sarecv = Calloc (1, sizeof(SA));
+	pid = getpid() & 0xffff;
 
 	size = 60 * 1024;		/* OK if setsockopt fails */
 	setsockopt(pg, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
-
-	sarecv = (SA *)malloc (sizeof(SA));
-
+	setsockopt(udp_recv, SOL_SOCKET, SO_RCVBUF, &size, 2*sizeof(size));
+ 
 	iov.iov_base = recvbuf;
 	iov.iov_len = sizeof(recvbuf);
 	mseg.msg_name = sarecv;
 	mseg.msg_iov = &iov;
 	mseg.msg_iovlen = 1;
 	mseg.msg_control = controlbuf;
-	
 
 	threads = (struct threads *)malloc(sizeof(struct threads));
 	threads = NULL;
 
 	struct timeval tv;
-	tv.tv_sec = 1000;
+	tv.tv_sec = 100;
 
 	buff = (uint8_t *) malloc(IP_MAXPACKET * sizeof (uint8_t));
 	payload = (struct payload *)  malloc(sizeof(struct payload));
@@ -243,6 +237,7 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 	maxfd = rt > udp_recv ? rt : udp_recv ;
 	maxfd = pg > maxfd ? pg+1 : maxfd +1 ;
 
+	Signal(SIGALRM, sig_alrm);
 	
 	while(1){
 	
@@ -286,8 +281,9 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 				printf ("PING %s (%s): %d data bytes\n",
 							a->ai_canonname ? a->ai_canonname : h, h, datalen);
 
-				pr[k].sasend = a->ai_addr;
-				pr[k].sarecv = Calloc (1, a->ai_addrlen);
+				//pr[k].sasend = a->ai_addr;
+				pr[k].sasend = iphdr->ip_src;
+				pr[k].sarecv = iphdr->ip_dst;
 				pr[k].salen = a->ai_addrlen;
 				pr[k].icmpproto = IPPROTO_ICMP;
 				strcpy(pr[k].host, hostname_src);
@@ -296,33 +292,27 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 
 				Pthread_create(&tid[i], NULL, ping_t, (void *)k);	
 				//Pthread_create(&tid[i], NULL, test, (void *)k);	
-				//printf("Created thread %u\n",(unsigned int) tid[i]);
 				newnode = (struct threads *)malloc (sizeof (struct threads));		
-				newnode->tid = tid[i++];
+				newnode->tid = tid[i];
 				newnode->ip = iphdr->ip_src;
 				newnode->next = NULL;
 				add_node(newnode);
-				k++;
+				k++;i++;
 			}
 			else
 				printf("%s is already pinged\n", hostname_src);
 
 			if(send_packet(rt, payload)){
 				
-				while (n != 0){
-					n = sleep(n);
-				}
-				kill_threads(tid, i-1);
-				sprintf(msg,"<<<<< This is node %s . Tour has ended . Group members please identify yourselves. >>>>>", hostname);
-				printf("\nNode %s . Sending <%s>\n", hostname, msg);
+				//printf("Setting memory\n");
+				memcpy(&p, &payload, sizeof(payload));
+				
+				// Set alarm to allow 5 mins pinging
+				alarm(5);
 
-				/*while (n != 0){
-					n = sleep(n);
-				}
-				kill_threads(tid i-1);*/
+				sprintf(msg1,"<<<<< This is node %s . Tour has ended . Group members please identify yourselves. >>>>>", hostname);
 
-				Sendto(udp_send, msg, sizeof(msg), 0, (SA *)&payload->mcastaddr, sizeof(payload->mcastaddr));
-				flag2 = 1;
+				flag3 = 1;
 
 			}				
 			
@@ -337,39 +327,10 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 				Mcast_join(udp_recv, (SA *)&(payload->mcastaddr), sizeof(payload->mcastaddr),0,0);
 
 				binded = 1;
-				//printf("\nJoined Multicast Group\n");
 			}
 		}
-		
-		if(FD_ISSET(udp_recv, &rset)){
-			memset(&source, 0, sizeof(struct sockaddr));
-			memset(msg, 0, MAXLINE);
-			findOwnIP(own_ip);
-			findHostName(own_ip, hostname);
-						
-			Recvfrom(udp_recv, msg, sizeof(msg), 0, (SA *)&source, &addrlen);
-
-				/*while (n != 0){
-					n = sleep(n);
-				}*/
-				if(!flag2){
-					kill_threads(tid, i-1);
-					flag2 = 1;
-				}	
-			printf("Node %s . Received: %s\n", hostname, msg);			
-
-			if(!flag){
-				memset(msg, 0, MAXLINE);
-				sprintf(msg, "<<<<< Node %s . I am a member of the group. >>>>>", hostname);
-				printf("\nNode %s . Sending:  %s\n", hostname, msg);
-				Send(udp_send, msg, sizeof(msg), 0);
-				flag = 1;
-				tv.tv_sec = 2;
-			}
-
-		}
-
-		/*if(FD_ISSET(pg, &rset)){
+		if(!flag4){
+		if(FD_ISSET(pg, &rset)){
 
 			mseg.msg_namelen = sizeof(SA);
 			mseg.msg_controllen = sizeof(controlbuf);
@@ -380,11 +341,43 @@ void run_tour(int rt, int udp_send, int udp_recv, int pg, int binded){
 				else
 					err_sys("recvmsg error");
 			}
-			//else
-			//	printf("Packet received\n");
+
 			Gettimeofday(&tval, NULL);
-			proc_v4(recvbuf, n, &mseg, &tval);
-		}*/
+			proc_v4(recvbuf, num, &mseg, &tval);
+		}
+		}
+		
+		if(FD_ISSET(udp_recv, &rset)){
+			memset(&source, 0, sizeof(struct sockaddr));
+			memset(msg, 0, MAXLINE);
+			findOwnIP(own_ip);
+			findHostName(own_ip, hostname);
+						
+			Recvfrom(udp_recv, msg, sizeof(msg), 0, (SA *)&source, &addrlen);
+			
+			if(flag3){
+				printf("\nNode %s . Sending <%s>\n", hostname, msg1);
+				flag3 = 0;
+			}
+
+			if(!flag2){
+				kill_threads(tid, i-1);
+				flag2 = 1;
+			}
+
+			printf("Node %s . Received: %s\n", hostname, msg);			
+
+			if(!flag){
+				memset(msg, 0, MAXLINE);
+				sprintf(msg, "<<<<< Node %s . I am a member of the group. >>>>>", hostname);
+				printf("\nNode %s . Sending:  %s\n", hostname, msg);
+				Send(udp_send, msg, sizeof(msg), 0);
+				flag = 1;
+				tv.tv_sec = 3;
+			}
+			flag4 = 1;
+
+		}
 
 		if((int)tv.tv_sec == 0){
 			printf("\nThank you for joining multicast session. Ending session now\n\n");
@@ -512,32 +505,6 @@ void * ping_t (void * arg){
 		
 	size = (int *)arg;
 
-	Pthread_detach(pthread_self());
-
-	//pid = getpid() & 0xffff;
-	//Signal(SIGALRM, sig_alrm);
-
-	/*ai = Host_serv (pr->host, NULL, 0, 0);
-
-	h = Sock_ntop_host(ai->ai_addr, ai->ai_addrlen);
-	printf ("PING %s (%s): %d data bytes\n",
-			ai->ai_canonname ? ai->ai_canonname : h, h, datalen);
-	
-	//pr = &proto_v4;
-	pr->sasend = ai->ai_addr;
-	pr->sarecv = Calloc (1, ai->ai_addrlen);
-	pr->salen = ai->ai_addrlen;*/
-	
-	/*sockfd = Socket(pr->sasend->sa_family, SOCK_RAW, pr->icmpproto);
-	setuid(getuid());
-	size = 60 * 1024;	
-	setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));*/
-
-	/*if (pr->finit)
-		(*pr->finit)();
-
-	sig_alrm(SIGALRM);*/
-	//printf("Protocol: %d\n", pr[size].icmpproto);
 	readloop(&pr[size]);
 	
 	return 0;
@@ -549,24 +516,23 @@ int add_node (struct threads *newnode){
 
 	struct threads *cur = threads;
 
-	if(threads == NULL){
-		threads = newnode;
-		//printf("Initial");
-		//printf("\n%s \t", inet_ntoa(newnode->ip));	
-		//printf("%s\n", inet_ntoa(threads->ip));	
+	if(cur == NULL){
+		threads = newnode;	
 		return 1;
 	}
 
-	while (cur != NULL){
-		if(!strcmp((inet_ntoa(cur->ip)),(inet_ntoa(newnode->ip)))){
-			//printf("%s\t%s\n", inet_ntoa(cur->ip), inet_ntoa(newnode->ip));
+	char ip[20];
+	strcpy(ip, inet_ntoa(newnode->ip));
+
+	while (cur->next != NULL){
+
+		if(!strcmp((inet_ntoa(cur->ip)),ip)){
 			return 0;
 		}
 		cur = cur->next;
 	}
-
 	cur->next = newnode;
-	//printf("Added new thread: %d", getpid());
+	cur->next->next = NULL;
 
 	return 1;
 
@@ -575,7 +541,7 @@ int add_node (struct threads *newnode){
 
 void kill_threads(pthread_t *tid, int i){
 
-	struct threads *cur = threads;
+	//struct threads *cur = threads;
 	
 	/*while (cur != NULL){
 		printf("Killing thread: %d\n", getpid());
@@ -592,45 +558,12 @@ void kill_threads(pthread_t *tid, int i){
 	}
 	
 	free(threads);
-	threads = NULL;
 
 }
-
-// Computing the internet checksum (RFC 1071)
-uint16_t checksum (uint16_t *addr, int len)
-{
-  int count = len;
-  register uint32_t sum = 0;
-  uint16_t answer = 0;
-
-  // Sum up 2-byte values until none or only one byte left.
-  while (count > 1) {
-    sum += *(addr++);
-    count -= 2;
-  }
-
-  // Add left-over byte, if any.
-  if (count > 0) {
-    sum += *(uint8_t *) addr;
-  }
-
-  // Fold 32-bit sum into 16 bits; we lose information by doing this,
-  // increasing the chances of a collision.
-  // sum = (lower 16 bits) + (upper 16 bits shifted right 16 bits)
-  while (sum >> 16) {
-    sum = (sum & 0xffff) + (sum >> 16);
-  }
-
-  // Checksum is one's compliment of sum.
-  answer = ~sum;
-
-  return (answer);
-}
-
 
 void *test(void *arg){
 	
-	int n = (int *)arg;
+	int n = *((int *)arg);
 	
 	while(1){
 		printf("Process ID: %u\t %d\n",(unsigned int)pthread_self(), pr[n].i);
@@ -643,10 +576,9 @@ int check_existing_thread (char *ip){
 
 	struct threads *cur = threads;
 	char ip2[20];
-	//printf("IP: %s\n", ip);
 	strcpy(ip2, ip);
+
 	while (cur != NULL){
-		//printf("WTF: IP:%s\t%s\n", ip2, inet_ntoa(cur->ip));
 		if (!strcmp(ip2, inet_ntoa(cur->ip))){
 			return 0;
 		}
@@ -654,5 +586,13 @@ int check_existing_thread (char *ip){
 	}
 	
 	return 1;
+
+}
+
+
+void sig_alrm(int signo){
+
+	Sendto(udp_send, msg1, sizeof(msg1), 0, (SA *)&p->mcastaddr, sizeof(p->mcastaddr));
+	return;
 
 }
