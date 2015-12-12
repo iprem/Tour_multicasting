@@ -6,7 +6,7 @@
 void
 send_v4(int sockfd, struct proto *pr)
 {
-	int			len, ip_flags[4], frame_length, n;
+	int			len, ip_flags[4], frame_length, n, i;
 	struct icmp	*icmp;
 	uint8_t *src_mac, *dst_mac, *ether_frame;
 	char interface[40];
@@ -54,8 +54,6 @@ send_v4(int sockfd, struct proto *pr)
 		printf("Failed to obtain HW address\n");
 		return;
 	}
-	else
-		printf("HW address obtained: %s", Hwaddr.sll_addr);
 	
 	//Obtain destination MAC Address vm1:00:0c:29:49:3f:5b
 	/*dst_mac[0] = 0x00;
@@ -70,7 +68,14 @@ send_v4(int sockfd, struct proto *pr)
 	memcpy (device.sll_addr, src_mac, 6);
 	device.sll_halen = 6;
 
-	memcpy(Hwaddr.sll_addr, dst_mac, 6);
+	memcpy(dst_mac, Hwaddr.sll_addr, 6);
+	
+	printf("HW address obtained: ");
+	for (i=0; i<5; i++) {
+    	printf ("%02x:", Hwaddr.sll_addr[i]);
+  	}
+  	printf ("%02x\n", Hwaddr.sll_addr[5]);
+	
 
 	iphdr.ip_hl = IP4_HDRLEN / sizeof (uint32_t);
 	iphdr.ip_v = 4;
